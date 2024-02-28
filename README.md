@@ -4,7 +4,8 @@ This package provides a set of HTTP endpoints for user management and authentica
 
 ## Getting Started
 
-To get started, you need to have Go installed on your machine.
+To get started, you need to have Go installed on your machine
+and set your .env file.
 
 Clone the repository:
 git clone https://github.com/maramilod/SadeemTech-Task.git
