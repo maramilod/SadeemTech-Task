@@ -540,36 +540,57 @@ func (r *Repository) UserAdmin(context *fiber.Ctx) (*models.Users, error) {
 func (r *Repository) UpdateUserAccount(c *fiber.Ctx) error {
     user, err := r.UserAdmin(c)
     if err != nil {
-        // Handle error, e.g., user not found, not an admin, or other database errors
         return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "internal server error"})
     }
 
+    // Assuming the request body now contains an ID field to identify the user to update
+    var userdata struct {
+        ID       uint   `json:"id"`
+        Password *string `json:"password"`
+        Image    *string `json:"image"`
+        Email    *string `json:"email"`
+    }
+
+    if err := c.BodyParser(&userdata); err != nil {
+        return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+            "error": "Cannot parse JSON",
+        })
+    }
+
+    // Find the existing user by ID
     existingUser := models.Users{}
-    if err := r.DB.Where("email = ?", user.Email).First(&existingUser).Error; err != nil {
+    if err := r.DB.First(&existingUser, user.ID).Error; err != nil {
         if errors.Is(err, gorm.ErrRecordNotFound) {
             return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"message": "User not found"})
         }
         return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"message": "Database error"})
     }
 
-    if user.Password != nil {
-        hashedPassword, err := bcrypt.GenerateFromPassword([]byte(*user.Password), bcrypt.DefaultCost)
+    // Check and hash the password if it's not nil
+    if userdata.Password != nil && *userdata.Password != "" {
+        hashedPassword, err := bcrypt.GenerateFromPassword([]byte(*userdata.Password), bcrypt.DefaultCost)
         if err != nil {
             return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"message": "Could not hash password"})
         }
-        *user.Password = string(hashedPassword)
+        *existingUser.Password = string(hashedPassword)
     }
 
-    if user.Image != nil && !isValidImageExtension(*user.Image) {
-        return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"message": "Invalid image file extension, only .jpg and .png are allowed"})
+    // Only validate and update the image if it's not nil
+    if userdata.Image != nil && *userdata.Image != "" {
+        if !isValidImageExtension(*userdata.Image) {
+            return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"message": "Invalid image file extension, only .jpg and .png are allowed"})
+        }
+        // Handle image file upload here
+        // For example, save the uploaded file to a permanent location and update the existingUser.Image field with the new file path
     }
 
-    if user.Email != nil && !isValidEmail(*user.Email) {
+    // Validate the email format
+    if userdata.Email != nil && *userdata.Email != "" && !isValidEmail(*userdata.Email) {
         return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"message": "Invalid email format"})
     }
 
     // Exclude the role field from being updated
-    result := r.DB.Model(&existingUser).Omit("role").Updates(user)
+    result := r.DB.Model(&existingUser).Omit("role").Updates(userdata)
     if result.Error != nil {
         return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
             "status":  500,
@@ -577,11 +598,12 @@ func (r *Repository) UpdateUserAccount(c *fiber.Ctx) error {
         })
     }
 
+    // Return the updated user data
     return c.Status(fiber.StatusOK).JSON(fiber.Map{
-        "message": "Your account updated successfully",
+        "message": "User updated successfully",
+        "data":    existingUser,
     })
 }
-
 
 
 
