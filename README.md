@@ -4,8 +4,7 @@ This package provides a set of HTTP endpoints for user management and authentica
 
 ## Getting Started
 
-To get started, you need to have Go installed on your machine
-and set your .env file.
+To get started, you need to have Go installed on your machine.
 
 Clone the repository:
 git clone https://github.com/maramilod/SadeemTech-Task.git
@@ -60,16 +59,26 @@ user method To delete an account and logout, send a DELETE request to `/deleteAc
 
 To search for a user by email, send a GET request to `/search/:email`.
 
-### Admin Methods
+### Classification Methods
 
 ![Create Classification](img/createclsf.png)
 - **Create Classification**: Send a POST request to `/createclsf` with the classification details.
-![Get All Classifications](img/getuserclsf-all-admin.png)
-- **Get All Classifications**: Send a GET request to `/getclsf`.
+![Insert Classification](img/user-clsf-insert.png)
+- **Insert User Classification**: Send a POST request to `/insertuserclsf` withe user id and classification id
+![Get All Classifications](img/getclsf-admin.png)
+![Get All Classifications](img/getclsf-user-public.png)
+- **GetClassifications**: Send a GET request to `/getclsf`
+note that the same method return all classification for admin and onlypublic classification for other users.
 ![Update Classification](img/updateclsf-admin.png)
 - **Update Classification**: Send a PUT request to `/updateclsf/:id` with the updated classification details.
 ![Delete Classification](img/delete-clsf.png)
 - **Delete Classification**: Send a DELETE request to `/deleteclsf/:id`.
+![Search Classification](img/search-clsf.png)
+- **Get Classifications**: Send a GET request to `/getclsf/:name`.
+
+### Privileges
+![User can not access to some methods](img/403.png)
+
 ## Conclusion
 
 This package provides a comprehensive set of user management features. It's designed to be easy to use, with clear and concise documentation for each endpoint.

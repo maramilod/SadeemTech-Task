@@ -1,6 +1,9 @@
 package user_handlers
 
 import (
+//  "io/ioutil"
+//  "io"
+//	"os"
 	"regexp"
 	"net/http"
 	"fmt"
@@ -41,6 +44,8 @@ func (r *Repository) SetupRoutes(app *fiber.App) {
     api.Post("/createclsf", JWTAuthMiddleware, r.InsertClassification)
     // Get all classifications
 	api.Get("/getclsf", JWTAuthMiddleware, r.GetClsf)
+    // Get classifications by name
+	api.Get("/getclsf/:name", JWTAuthMiddleware, r.GetClsfName)
     // Delete a classification by ID
 	api.Delete("/deleteclsf/:id", JWTAuthMiddleware, r.DeleteClsf)
     // Update a classification by ID
@@ -69,8 +74,8 @@ func (r *Repository) SetupRoutes(app *fiber.App) {
 	api.Put("updateUser/:id", JWTAuthMiddleware, r.UpdateUser)
     // Update a user account
 	api.Put("updateUser", JWTAuthMiddleware, r.UpdateUserAccount)
-    // Search for a user by email
-	api.Get("/search/:email", JWTAuthMiddleware, r.Search)
+    // Search for a user by email or name
+	api.Get("/search/:em_or_na", JWTAuthMiddleware, r.Search)
 }
 
 
@@ -285,6 +290,38 @@ func (r *Repository) Updateclsf(c *fiber.Ctx) error {
 return c.Status(fiber.StatusForbidden).JSON("sorry, you can't use this method. You need to be an admin")
 }
 
+// GetClsfName retrieves classifications by name
+func (r *Repository) GetClsfName(c *fiber.Ctx) error {
+    useradmin, err := r.UserAdmin(c)
+    if err != nil {
+        // Handle error, e.g., user not found, not an admin, or other database errors
+        return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "internal server error"})
+    }
+
+    if useradmin != nil && *useradmin.Role == "admin" {
+    // Extract the name parameter from the URL
+    name := c.Params("name")
+
+    // Initialize a slice to hold the results
+    var classifications []models.Classification
+
+    // Query the database for classifications with the matching name
+    result := r.DB.Where("name = ?", name).Find(&classifications)
+    if result.Error != nil {
+        // If there's an error, return a 500 status code with an error message
+        return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Error fetching classifications"})
+    }
+
+    // If no classifications are found, return a 404 status code with a message
+    if len(classifications) == 0 {
+        return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"message": "No classifications found with the specified name"})
+    }
+
+    // Return the found classifications with a 200 status code
+    return c.Status(fiber.StatusOK).JSON(classifications)
+}
+return c.Status(fiber.StatusForbidden).JSON("sorry, you can't use this method. You need to be an admin")
+}
 
 
 func (r *Repository) GetClsf(c *fiber.Ctx) error {
@@ -318,6 +355,7 @@ func (r *Repository) GetClsf(c *fiber.Ctx) error {
         // Return the public user classifications as JSON
         return c.Status(fiber.StatusOK).JSON(classifications)
     }
+    
 	
 }
 
@@ -499,7 +537,7 @@ func (r *Repository) UserAdmin(context *fiber.Ctx) (*models.Users, error) {
     return &user, nil
 }
 
-func  (r *Repository)  UpdateUserAccount(c *fiber.Ctx) error {
+func (r *Repository) UpdateUserAccount(c *fiber.Ctx) error {
     user, err := r.UserAdmin(c)
     if err != nil {
         // Handle error, e.g., user not found, not an admin, or other database errors
@@ -530,8 +568,8 @@ func  (r *Repository)  UpdateUserAccount(c *fiber.Ctx) error {
         return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"message": "Invalid email format"})
     }
 
-    // Update the user in the database
-    result := r.DB.Model(&existingUser).Updates(user) // Use existingUser for the update
+    // Exclude the role field from being updated
+    result := r.DB.Model(&existingUser).Omit("role").Updates(user)
     if result.Error != nil {
         return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
             "status":  500,
@@ -543,6 +581,7 @@ func  (r *Repository)  UpdateUserAccount(c *fiber.Ctx) error {
         "message": "Your account updated successfully",
     })
 }
+
 
 
 
@@ -718,27 +757,36 @@ func (r *Repository) Search(context *fiber.Ctx) error {
     }
 
     if user != nil && *user.Role == "admin" {
-        email := context.Params("email") // Assuming you pass the email as a URL parameter named "email"
-        if email == "" {
+        emOrNa := context.Params("em_or_na")
+        if emOrNa == "" {
             context.Status(http.StatusBadRequest).JSON(&fiber.Map{
-                "message": "email cannot be empty",
+                "message": "send email or name  to search for a user.",
             })
             return nil
         }
 
-        fmt.Println("the email is", email)
-
+        // Attempt to find user by email first
         userModel := &models.Users{}
-        err := r.DB.Where("email = ?", email).First(userModel).Error
+        err := r.DB.Where("email = ?", emOrNa).First(userModel).Error
         if err != nil {
             if errors.Is(err, gorm.ErrRecordNotFound) {
-                context.Status(http.StatusNotFound).JSON(
-                    &fiber.Map{"message": "user not found"})
+                // If not found by email, try finding by name
+                err = r.DB.Where("name = ?", emOrNa).First(userModel).Error
+                if err != nil {
+                    if errors.Is(err, gorm.ErrRecordNotFound) {
+                        context.Status(http.StatusNotFound).JSON(
+                            &fiber.Map{"message": "user not found by email or name"})
+                    } else {
+                        context.Status(http.StatusInternalServerError).JSON(
+                            &fiber.Map{"message": "database error"})
+                    }
+                    return err
+                }
             } else {
                 context.Status(http.StatusInternalServerError).JSON(
                     &fiber.Map{"message": "database error"})
+                return err
             }
-            return err
         }
 
         context.Status(http.StatusOK).JSON(&fiber.Map{
@@ -754,70 +802,90 @@ func (r *Repository) Search(context *fiber.Ctx) error {
     return nil
 }
 
-// Register start
+
 func (r *Repository) Register(context *fiber.Ctx) error {
-	useradmin, err := r.UserAdmin(context)
+    useradmin, err := r.UserAdmin(context)
     if err != nil {
-        // Handle error, e.g., user not found, not an admin, or other database errors
         return context.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "internal server error"})
     }
 
     if useradmin != nil && *useradmin.Role == "admin" {
-	user := User{}
+        user := User{}
 
-	err := context.BodyParser(&user)
+        err := context.BodyParser(&user)
+        if err != nil {
+            return context.Status(http.StatusUnprocessableEntity).JSON(&fiber.Map{"message": "request failed"})
+        }
 
-	if err != nil {
-		context.Status(http.StatusUnprocessableEntity).JSON(
-			&fiber.Map{"message": "request failed"})
-		return err
-	}
+        existingUser := models.Users{}
+        if err := r.DB.Where("email = ?", user.Email).First(&existingUser).Error; err == nil {
+            return context.Status(http.StatusBadRequest).JSON(fiber.Map{"message": "email already exists"})
+        }
 
-	// Check if the email already exists
-    existingUser := models.Users{}
-    if err := r.DB.Where("email = ?", user.Email).First(&existingUser).Error; err == nil {
-        // Email already exists
-        return context.Status(http.StatusBadRequest).JSON(fiber.Map{"message": "email already exists"})
-    }
-    
-    // Hash the password
-    hashedPassword, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
-		if err != nil {
-			context.Status(http.StatusInternalServerError).JSON(
-				&fiber.Map{"message": "could not hash password"})
-			return err
-		}
+        hashedPassword, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
+        if err != nil {
+            return context.Status(http.StatusInternalServerError).JSON(&fiber.Map{"message": "could not hash password"})
+        }
         user.Password = string(hashedPassword)
 
-	// Validate the image file extension
-	if !isValidImageExtension(user.Image) {
-		context.Status(http.StatusBadRequest).JSON(
-			&fiber.Map{"message": "invalid image file extension, only .jpg and .png are allowed"})
-		return fmt.Errorf("invalid image file extension")
-	}
+        if !isValidImageExtension(user.Image) {
+            return context.Status(http.StatusBadRequest).JSON(&fiber.Map{"message": "invalid image file extension, only .jpg and .png are allowed"})
+        }
 
-	// Validate the email format
-	if !isValidEmail(user.Email) {
-		context.Status(http.StatusBadRequest).JSON(
-			&fiber.Map{"message": "invalid email format"})
-		return fmt.Errorf("invalid email format")
-	}
+        if !isValidEmail(user.Email) {
+            return context.Status(http.StatusBadRequest).JSON(&fiber.Map{"message": "invalid email format"})
+        }
+/* 
+        // Correctly handle file upload and get the file path
+        filePath, err := r.handleFileUpload(context)
+        if err != nil {
+            return err // This will return the error from handleFileUpload
+        }
+        user.Image = filePath
+*/
+        err = r.DB.Create(&user).Error
+        if err != nil {
+            return context.Status(http.StatusBadRequest).JSON(&fiber.Map{"message": "could not create user"})
+        }
 
-	err = r.DB.Create(&user).Error
-	if err != nil {
-		context.Status(http.StatusBadRequest).JSON(
-			&fiber.Map{"message": "could not create user"})
-		return err
-	}
+        return context.Status(http.StatusOK).JSON(&fiber.Map{"message": "Add User Successfully"})
+    }
 
-	context.Status(http.StatusOK).JSON(&fiber.Map{
-		"message": "user has been added"})
-	return nil
-	}
-	context.Status(fiber.StatusForbidden).JSON(&fiber.Map{
-    "message": "sorry u can't use this method you need to be admin"})
-	return nil
+    return context.Status(fiber.StatusForbidden).JSON(&fiber.Map{"message": "sorry u can't use this method you need to be admin"})
 }
+/*
+func (r *Repository) handleFileUpload(c *fiber.Ctx) (string, error) {
+    file, err := c.FormFile("file")
+    if err != nil {
+        return "", c.Status(fiber.StatusBadRequest).JSON(&fiber.Map{"error": "No file provided"})
+    }
+
+    src, err := file.Open()
+    if err != nil {
+        return "", c.Status(fiber.StatusInternalServerError).JSON(&fiber.Map{"error": "Failed to open file"})
+    }
+    defer src.Close()
+
+    tempFile, err := ioutil.TempFile("./uploads", "upload-*")
+    if err != nil {
+        return "", c.Status(fiber.StatusInternalServerError).JSON(&fiber.Map{"error": "Failed to create temporary file"})
+    }
+    defer tempFile.Close()
+
+    _, err = io.Copy(tempFile, src)
+    if err != nil {
+        return "", c.Status(fiber.StatusInternalServerError).JSON(&fiber.Map{"error": "Failed to save file"})
+    }
+
+    newFilename := strconv.FormatInt(time.Now().UnixNano(), 10) + filepath.Ext(file.Filename)
+    newFilePath := filepath.Join("./uploads", newFilename)
+    if err := os.Rename(tempFile.Name(), newFilePath); err != nil {
+        return "", c.Status(fiber.StatusInternalServerError).JSON(&fiber.Map{"error": "Failed to move file"})
+    }
+
+    return newFilePath, nil
+}
+*/
 
 
 func (r *Repository) LogoutUser(c *fiber.Ctx) error {
