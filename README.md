@@ -1,6 +1,6 @@
-# User Handlers Package
+# User Management Package
 
-This package provides a set of HTTP endpoints for user management and authentication. It's built with Fiber, a fast and flexible web framework for Go, and GORM for ORM.
+This backend program provides a set of HTTP endpoints for user management and authentication. It's built with Fiber, a fast and flexible web framework for Go, and GORM for ORM.
 
 ## Getting Started
 
@@ -42,7 +42,7 @@ Admin method To update a user's information, send a PUT request to `/updateUser/
 
 ![User Update](img/updateuser.png)
 
-user method To update a user's information, send a PUT request to `/updateUser/:id` with the new user information in the JSON body.
+user method To update a user's information, send a PUT request to `/updateUser` with the new user information in the JSON body.
 
 ### User Deletion
 
@@ -63,21 +63,28 @@ To search for a user by email, send a GET request to `/search/:email`.
 
 ![Create Classification](img/createclsf.png)
 - **Create Classification**: Send a POST request to `/createclsf` with the classification details.
+
 ![Insert Classification](img/user-clsf-insert.png)
 - **Insert User Classification**: Send a POST request to `/insertuserclsf` withe user id and classification id
+
 ![Get All Classifications](img/getclsf-admin.png)
+
 ![Get All Classifications](img/getclsf-user-public.png)
 - **GetClassifications**: Send a GET request to `/getclsf`
 note that the same method return all classification for admin and onlypublic classification for other users.
+
 ![Update Classification](img/updateclsf-admin.png)
 - **Update Classification**: Send a PUT request to `/updateclsf/:id` with the updated classification details.
+
 ![Delete Classification](img/delete-clsf.png)
 - **Delete Classification**: Send a DELETE request to `/deleteclsf/:id`.
+
 ![Search Classification](img/search-clsf.png)
 - **Get Classifications**: Send a GET request to `/getclsf/:name`.
 
 ### Privileges
 ![User can not access to some methods](img/403.png)
+**Privileges**
 
 ## Conclusion
 
