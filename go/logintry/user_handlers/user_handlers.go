@@ -744,31 +744,48 @@ func (r *Repository) DeleteUser(context *fiber.Ctx) error {
 func (r *Repository) GetUsers(context *fiber.Ctx) error {
     user, err := r.UserAdmin(context)
     if err != nil {
-        // Handle error, e.g., user not found, not an admin, or other database errors
         return context.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "internal server error"})
     }
 
     if user != nil && *user.Role == "admin" {
-        userModels := &[]models.Users{}
+        // Extract pagination parameters with defaults
+        page, _ := strconv.Atoi(context.Query("page", "1"))
+        limit, _ := strconv.Atoi(context.Query("limit", "10"))
 
-        err := r.DB.Find(userModels).Error
+        // Calculate offset
+        offset := (page - 1) * limit
+
+        // Initialize a slice to hold the users
+        var userModels []models.Users // Corrected from models.Users to models.User
+
+        // Modify the query to include pagination
+        err := r.DB.Offset(offset).Limit(limit).Find(&userModels).Error
         if err != nil {
             return context.Status(http.StatusBadRequest).JSON(
-                &fiber.Map{"message": "could not get users"})
+                fiber.Map{"message": "could not get users"})
         }
 
-        return context.Status(http.StatusOK).JSON(&fiber.Map{
+        // Calculate total records
+        var total int64
+        r.DB.Model(&models.Users{}).Count(&total)
+
+        // Return paginated data with additional pagination information
+        return context.Status(http.StatusOK).JSON(fiber.Map{
             "message": "users fetched successfully",
             "data":    userModels,
+            "pagination": fiber.Map{
+                "page":    page,
+                "limit":   limit,
+                "total":   total, // Dynamically calculated total records
+            },
         })
     } else {
         // If the user is not an admin, return a message or handle accordingly
-        return context.Status(http.StatusOK).JSON(&fiber.Map{
+        return context.Status(http.StatusOK).JSON(fiber.Map{
             "message": "you can only see your data",
-			"data":    user,
+            "data":    user,
         })
     }
-	
 }
 
 func (r *Repository) Search(context *fiber.Ctx) error {

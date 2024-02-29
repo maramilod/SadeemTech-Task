@@ -12,6 +12,13 @@ git clone https://github.com/maramilod/SadeemTech-Task.git
 
 ## Endpoints
 
+### UPDATE
+
+![added paginated for users](img/page1.png)
+
+![added paginated for users](img/page2.png)
+
+**Added Paginated Output For Users]**
 
 ### User Login
 
